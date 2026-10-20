@@ -9,13 +9,16 @@ import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.domain.model.WatchedItem
 import com.nuvio.tv.domain.repository.WatchProgressRepository
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Singleton
@@ -28,6 +31,7 @@ class ServerUserStateProjection @Inject constructor(
     private val profileManager: ProfileManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lastImportMs = ConcurrentHashMap<String, Long>()
 
     fun start() {
         scope.launch {
@@ -41,6 +45,48 @@ class ServerUserStateProjection @Inject constructor(
                 }
             }
         }
+        scope.launch {
+            repository.uiState
+                .map { state -> state.enabledConnections.filter { it.importWatchState }.map { it.id }.toSet() }
+                .distinctUntilChanged()
+                .collect { refreshContinueWatching(force = true) }
+        }
+    }
+
+    /**
+     * Imports in-progress items from servers with [ServerCapability.CONTINUE_WATCHING] into Continue
+     * Watching, so they show the episode and position and resume playback directly. Runs when import is
+     * turned on and when the app returns to the foreground.
+     */
+    fun refreshContinueWatching(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        repository.enabledConnections()
+            .filter { connection ->
+                connection.importWatchState &&
+                    repository.provider(connection)?.supports(ServerCapability.CONTINUE_WATCHING) == true
+            }
+            .filter { force || now - (lastImportMs[it.id] ?: 0L) >= MIN_IMPORT_INTERVAL_MS }
+            .forEach { connection ->
+                lastImportMs[connection.id] = now
+                scope.launch { importContinueWatching(connection) }
+            }
+    }
+
+    private suspend fun importContinueWatching(connection: ServerConnection) {
+        val entries = try {
+            repository.call(connection.id) { provider, session -> provider.continueWatching(session, IMPORT_LIMIT) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "Loading Continue Watching from ${connection.providerId} failed: ${error.serverFailure()}")
+            return
+        }
+        val profileId = profileManager.activeProfileId.value
+        val progress = entries
+            .filter { it.state.isResumable() }
+            .map { it.toProgress(ServerCatalog.baseUrl(connection.id)) }
+            .filter { isNewer(it, it.season != null, profileId) }
+        if (progress.isNotEmpty()) watchProgressRepository.saveProgressBatch(progress, syncRemote = false)
     }
 
     suspend fun apply(details: ServerItemDetails) {
@@ -85,6 +131,29 @@ class ServerUserStateProjection @Inject constructor(
         return existing == null || existing.lastWatched < progress.lastWatched
     }
 
+    private fun ServerUserState.isResumable(): Boolean =
+        !played && positionMs > 0L && durationMs > 0L && lastPlayedEpochMs != null
+
+    private fun ServerResumeEntry.toProgress(addonBaseUrl: String): WatchProgress {
+        val isSeries = parent.type == ContentType.SERIES
+        return WatchProgress(
+            contentId = parent.id,
+            contentType = parent.apiType,
+            name = parent.name,
+            poster = parent.poster,
+            backdrop = parent.background,
+            logo = parent.logo,
+            videoId = state.videoId,
+            season = state.season.takeIf { isSeries },
+            episode = state.episode.takeIf { isSeries },
+            episodeTitle = state.title.takeIf { isSeries },
+            position = state.positionMs,
+            duration = state.durationMs,
+            lastWatched = state.lastPlayedEpochMs ?: 0L,
+            addonBaseUrl = addonBaseUrl
+        )
+    }
+
     private fun ServerUserState.toProgress(meta: Meta, isSeries: Boolean, addonBaseUrl: String) = WatchProgress(
         contentId = meta.id,
         contentType = meta.apiType,
@@ -114,5 +183,7 @@ class ServerUserStateProjection @Inject constructor(
 
     private companion object {
         const val TAG = "ServerUserState"
+        const val IMPORT_LIMIT = 30
+        const val MIN_IMPORT_INTERVAL_MS = 30_000L
     }
 }

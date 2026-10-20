@@ -68,6 +68,29 @@ class ServerWatched internal constructor(
         }
     }
 
+    /**
+     * Clears saved positions on servers with [ServerCapability.CONTINUE_WATCHING] after their items are
+     * removed from Continue Watching, so the next import does not restore them.
+     */
+    fun forgetProgress(videoIds: Collection<String>): Job? {
+        val refs = videoIds.mapNotNull(ServerItemRef::parse).distinct().filter { ref ->
+            val connection = repository.connection(ref.connectionId) ?: return@filter false
+            repository.provider(connection)?.supports(ServerCapability.CONTINUE_WATCHING) == true
+        }
+        if (refs.isEmpty()) return null
+        return scope.launch {
+            refs.forEach { ref ->
+                try {
+                    repository.call(ref.connectionId) { provider, session -> provider.removeProgress(session, ref.itemId) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    Log.w(TAG, "Clearing server progress for ${ref.label()} failed: ${error.serverFailure()}")
+                }
+            }
+        }
+    }
+
     fun mirror(marks: List<ServerWatchMark>, played: Boolean): Job? {
         val connections = repository.enabledConnections().filter { it.useCatalogMetadata }
         val catalogMarks = marks.filterNot { ServerItemRef.isServerId(it.contentId) }

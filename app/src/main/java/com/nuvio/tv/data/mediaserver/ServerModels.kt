@@ -30,12 +30,20 @@ fun ServerMediaKind.domainType(): ContentType = when (this) {
     ServerMediaKind.MIXED -> ContentType.UNKNOWN
 }
 
+/** A provider-defined filter within a library, offered as a genre in Discover. */
+@Serializable
+data class ServerGenre(
+    val id: String,
+    val name: String
+)
+
 @Serializable
 data class ServerLibrary(
     val id: String,
     val name: String,
     val kind: ServerMediaKind,
-    val selected: Boolean = true
+    val selected: Boolean = true,
+    val genres: List<ServerGenre> = emptyList()
 ) {
     fun holds(kind: ServerMediaKind): Boolean =
         this.kind == kind || (this.kind == ServerMediaKind.MIXED && kind != ServerMediaKind.COLLECTION)
@@ -144,6 +152,16 @@ data class ServerUserState(
     val title: String? = null
 )
 
+/**
+ * An in-progress item with the context Nuvio's Continue Watching needs: the movie or series it
+ * belongs to, and the playable video's position.
+ */
+data class ServerResumeEntry(
+    val parent: MetaPreview,
+    val state: ServerUserState,
+    val episodeThumbnail: String? = null
+)
+
 data class ServerCandidate(
     val target: ServerPlaybackTarget,
     val title: String,
@@ -202,7 +220,8 @@ enum class ServerPlaybackEventType {
 data class ServerPlaybackEvent(
     val type: ServerPlaybackEventType,
     val positionMs: Long,
-    val isPaused: Boolean
+    val isPaused: Boolean,
+    val durationMs: Long = 0L
 )
 
 enum class ServerFailure {

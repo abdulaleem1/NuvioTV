@@ -836,6 +836,13 @@ class WatchProgressRepositoryImpl @Inject constructor(
     override suspend fun removeProgress(contentId: String, season: Int?, episode: Int?) {
         val profileId = profileManager.activeProfileId.value
         val remoteDeleteKeys = resolveRemoteDeleteKeys(contentId, season, episode, profileId = profileId)
+        if (ServerItemRef.isServerId(contentId)) {
+            // Finished entries stay on the server as watch history.
+            val entries = watchProgressPreferences.getAllRawEntries(profileId)
+            serverWatched.forgetProgress(
+                remoteDeleteKeys.mapNotNull(entries::get).filterNot { it.isCompleted() }.map { it.videoId }
+            )
+        }
         mutationStore.queueProgressDeletes(remoteDeleteKeys, profileId)
         supervisorScope {
             connectedProgressProviders().map { provider ->

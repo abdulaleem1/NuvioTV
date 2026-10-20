@@ -97,9 +97,14 @@ class ServerCatalog @Inject constructor(
             else -> {
                 val library = connection.libraries.firstOrNull { it.id == catalogId }
                     ?: throw ServerException(ServerFailure.NOT_FOUND)
+                val genre = extraArgs["genre"]?.let { name -> library.genres.firstOrNull { it.name == name } }
                 pageOf(connection, skip) {
                     repository.call(connection.id) { provider, session ->
-                        provider.libraryPage(session, library, skip, PAGE_SIZE)
+                        if (genre == null) {
+                            provider.libraryPage(session, library, skip, PAGE_SIZE)
+                        } else {
+                            provider.genrePage(session, library, genre.id, skip, PAGE_SIZE)
+                        }
                     }
                 }
             }
@@ -172,14 +177,23 @@ class ServerCatalog @Inject constructor(
             name = "${connection.name} · ${context.getString(R.string.servers_resume_row)}",
             showInHome = true,
             hasExplicitShowInHome = true
-        ).takeIf { provider.supports(ServerCapability.USER_STATE_READ) }
+        ).takeIf {
+            provider.supports(ServerCapability.USER_STATE_READ) &&
+                // Imported items already appear in Nuvio's own Continue Watching row.
+                !(connection.importWatchState && provider.supports(ServerCapability.CONTINUE_WATCHING))
+        }
         val catalogs = libraries.map { library ->
             CatalogDescriptor(
                 type = library.kind.domainType(),
                 rawType = library.kind.contentType,
                 id = library.id,
                 name = "${connection.name} · ${library.name}",
-                extra = listOf(CatalogExtra(name = "skip")),
+                extra = listOfNotNull(
+                    CatalogExtra(name = "skip"),
+                    library.genres.takeIf { it.isNotEmpty() }?.let { genres ->
+                        CatalogExtra(name = "genre", options = genres.map { it.name }.distinct())
+                    }
+                ),
                 showInHome = true,
                 hasExplicitShowInHome = true
             )

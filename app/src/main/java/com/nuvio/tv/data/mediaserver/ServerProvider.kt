@@ -7,7 +7,10 @@ enum class ServerCapability {
     EXTERNAL_ID_LOOKUP,
     USER_STATE_READ,
     USER_STATE_WRITE,
-    TRANSCODING
+    TRANSCODING,
+
+    /** In-progress items are imported into Nuvio's Continue Watching instead of a server row. */
+    CONTINUE_WATCHING
 }
 
 interface ServerProvider {
@@ -15,6 +18,14 @@ interface ServerProvider {
     val displayName: String
     val capabilities: Set<ServerCapability>
     val minimumVersion: String
+
+    /** False for servers that are reached by address alone, so sign-in asks for no username or password. */
+    val requiresCredentials: Boolean
+        get() = true
+
+    /** Example address shown in the sign-in field, or null for the default media-server hint. */
+    val addressHint: String?
+        get() = null
 
     suspend fun signIn(address: String, username: String, password: String): ServerSignIn = unsupported()
 
@@ -26,6 +37,15 @@ interface ServerProvider {
         start: Int,
         limit: Int
     ): ServerPage<ServerTitle>
+
+    /** A page of [library] narrowed to one of its [ServerLibrary.genres]. */
+    suspend fun genrePage(
+        session: ServerSession,
+        library: ServerLibrary,
+        genreId: String,
+        start: Int,
+        limit: Int
+    ): ServerPage<ServerTitle> = unsupported()
 
     suspend fun details(session: ServerSession, itemId: String): ServerItemDetails
 
@@ -55,6 +75,12 @@ interface ServerProvider {
     suspend fun resumeItems(session: ServerSession, limit: Int): List<ServerTitle> = unsupported()
 
     suspend fun setPlayed(session: ServerSession, itemId: String, played: Boolean): Unit = unsupported()
+
+    /** Items for Nuvio's Continue Watching; requires [ServerCapability.CONTINUE_WATCHING]. */
+    suspend fun continueWatching(session: ServerSession, limit: Int): List<ServerResumeEntry> = unsupported()
+
+    /** Forgets the saved position of [itemId] after it is removed from Continue Watching. */
+    suspend fun removeProgress(session: ServerSession, itemId: String): Unit = unsupported()
 
     suspend fun externalIdIndex(
         session: ServerSession,

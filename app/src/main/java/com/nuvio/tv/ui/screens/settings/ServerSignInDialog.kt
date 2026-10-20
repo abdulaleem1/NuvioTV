@@ -46,7 +46,8 @@ internal fun ServerSignInDialog(
     var username by remember { mutableStateOf(request.username) }
     var password by remember { mutableStateOf("") }
     val provider = request.provider
-    val canConnect = !state.connecting && address.isNotBlank() && username.isNotBlank()
+    val requiresCredentials = provider.requiresCredentials
+    val canConnect = !state.connecting && address.isNotBlank() && (username.isNotBlank() || !requiresCredentials)
     val connect = {
         if (canConnect) {
             viewModel.connect(provider, address, username, password) { connection ->
@@ -61,20 +62,25 @@ internal fun ServerSignInDialog(
     NuvioDialog(
         onDismiss = { if (!state.connecting) onDismiss() },
         title = stringResource(R.string.servers_sign_in_title, provider.displayName),
-        subtitle = stringResource(R.string.servers_sign_in_subtitle, provider.displayName),
+        subtitle = if (requiresCredentials) {
+            stringResource(R.string.servers_sign_in_subtitle, provider.displayName)
+        } else {
+            stringResource(R.string.servers_sign_in_subtitle_address, provider.displayName)
+        },
         width = 640.dp
     ) {
         SignInField(label = stringResource(R.string.servers_address)) {
             InputField(
                 value = address,
                 onValueChange = { address = it },
-                placeholder = stringResource(R.string.servers_address_hint),
+                placeholder = provider.addressHint ?: stringResource(R.string.servers_address_hint),
                 keyboardType = KeyboardType.Uri,
-                imeAction = ImeAction.Next,
+                imeAction = if (requiresCredentials) ImeAction.Next else ImeAction.Done,
+                onImeAction = if (requiresCredentials) ({}) else connect,
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        SignInField(label = stringResource(R.string.servers_username)) {
+        if (requiresCredentials) SignInField(label = stringResource(R.string.servers_username)) {
             InputField(
                 value = username,
                 onValueChange = { username = it },
@@ -83,7 +89,7 @@ internal fun ServerSignInDialog(
                 modifier = Modifier.fillMaxWidth()
             )
         }
-        SignInField(label = stringResource(R.string.servers_password)) {
+        if (requiresCredentials) SignInField(label = stringResource(R.string.servers_password)) {
             InputField(
                 value = password,
                 onValueChange = { password = it },

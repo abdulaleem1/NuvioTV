@@ -130,7 +130,7 @@ class ServerRepository(
             libraries = existing?.libraries.orEmpty(),
             enabled = true,
             useCatalogMetadata = existing?.useCatalogMetadata ?: false,
-            importWatchState = existing?.importWatchState ?: false
+            importWatchState = existing?.importWatchState ?: provider.supports(ServerCapability.CONTINUE_WATCHING)
         )
         val libraries = provider.libraries(ServerSession(draft, signIn.token))
         if (startedGeneration != generation || profileId != loadedProfileId) {
@@ -228,7 +228,8 @@ class ServerRepository(
             usedIds += id
             updatedTokens[credentialRef] = server.token
             if (local != null && currentTokens[credentialRef] != server.token) setFailure(local.id, null)
-            server.toConnection(id, credentialRef)
+            // Synced libraries carry no genres; keep the ones this device fetched from the server.
+            server.toConnection(id, credentialRef).withGenresFrom(local)
         }
         (current.map { it.id } - usedIds).forEach { setFailure(it, null) }
         pendingPush = false
@@ -318,9 +319,15 @@ class ServerRepository(
             persistence.read(profileId)?.let { json.decodeFromString(StoredServers.serializer(), it) }
         }.getOrNull() ?: StoredServers()
 
+    private fun ServerConnection.withGenresFrom(local: ServerConnection?): ServerConnection {
+        val genres = local?.libraries?.associate { it.id to it.genres }.orEmpty()
+        if (genres.isEmpty()) return this
+        return copy(libraries = libraries.map { it.copy(genres = genres[it.id].orEmpty()) })
+    }
+
     private fun mergeLibraries(previous: List<ServerLibrary>, current: List<ServerLibrary>): List<ServerLibrary> {
         val selection = previous.associate { it.id to it.selected }
-        return current.map { library -> library.copy(selected = selection[library.id] ?: true) }
+        return current.map { library -> library.copy(selected = selection[library.id] ?: library.selected) }
     }
 
     private fun newId(prefix: String): String =

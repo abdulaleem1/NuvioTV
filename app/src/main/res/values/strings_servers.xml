@@ -5,8 +5,10 @@
     <string name="servers_section_add">Add server</string>
     <string name="servers_empty">No servers connected yet.</string>
     <string name="servers_add_description">Sign in with your server address and %1$s user.</string>
+    <string name="servers_add_description_address">Connect with your %1$s server address.</string>
     <string name="servers_sign_in_title">Sign in to %1$s</string>
     <string name="servers_sign_in_subtitle">Enter your server address and the %1$s user to sign in with. Your password is only used to sign in.</string>
+    <string name="servers_sign_in_subtitle_address">Enter the address of your %1$s server. No account is needed: it uses the portal profile already saved on the server.</string>
     <string name="servers_address">Server address</string>
     <string name="servers_address_hint">http://192.168.1.10:8096</string>
     <string name="servers_username">Username</string>

@@ -33,7 +33,8 @@ internal fun PlayerRuntimeController.reportServerPlayback() {
         positionMs = _playbackTimeline.value.currentPosition,
         isPlaying = state.isPlaying,
         isLoading = state.isBuffering,
-        isEnded = state.playbackEnded
+        isEnded = state.playbackEnded,
+        durationMs = _playbackTimeline.value.duration
     )
 }
 

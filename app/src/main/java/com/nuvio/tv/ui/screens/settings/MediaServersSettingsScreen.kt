@@ -91,7 +91,11 @@ internal fun MediaServersSettingsContent(
                     items(viewModel.providers, key = { "provider_${it.id}" }) { provider ->
                         SettingsActionRow(
                             title = provider.displayName,
-                            subtitle = stringResource(R.string.servers_add_description, provider.displayName),
+                            subtitle = if (provider.requiresCredentials) {
+                                stringResource(R.string.servers_add_description, provider.displayName)
+                            } else {
+                                stringResource(R.string.servers_add_description_address, provider.displayName)
+                            },
                             onClick = { signIn = ServerSignInRequest(provider) },
                             leadingRawIconRes = serverLogoRes(provider.id),
                             modifier = if (connections.isEmpty() && provider == viewModel.providers.first()) focusModifier else Modifier
@@ -144,5 +148,6 @@ internal fun ServerConnection.statusLabel(failure: ServerFailure?): String? = wh
 internal fun serverLogoRes(providerId: String): Int? = when (providerId) {
     "jellyfin" -> R.raw.jellyfin_logo
     "emby" -> R.raw.emby_logo
+    "nexflix" -> R.raw.nexflix_logo
     else -> null
 }

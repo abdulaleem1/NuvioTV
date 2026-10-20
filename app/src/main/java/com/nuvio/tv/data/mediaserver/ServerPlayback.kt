@@ -84,8 +84,16 @@ class ServerPlayback internal constructor(
 
     fun isServerSource(url: String?): Boolean = url != null && synchronized(lock) { url in active }
 
-    fun onPlaybackSnapshot(url: String?, positionMs: Long, isPlaying: Boolean, isLoading: Boolean, isEnded: Boolean) {
+    fun onPlaybackSnapshot(
+        url: String?,
+        positionMs: Long,
+        isPlaying: Boolean,
+        isLoading: Boolean,
+        isEnded: Boolean,
+        durationMs: Long = 0L
+    ) {
         val playback = url?.let { synchronized(lock) { active[it] } } ?: return
+        if (durationMs > 0L) playback.durationMs = durationMs
         if (isEnded) {
             playback.lastPositionMs = positionMs
             stop(url)
@@ -136,6 +144,7 @@ class ServerPlayback internal constructor(
         var started = false
             private set
         var lastPositionMs = 0L
+        var durationMs = 0L
         private var paused = false
         private var lastReportPositionMs = 0L
         private var lastReportAtMs = 0L
@@ -194,7 +203,7 @@ class ServerPlayback internal constructor(
         private fun send(type: ServerPlaybackEventType, positionMs: Long, isPaused: Boolean) {
             lastReportAtMs = clock()
             lastReportPositionMs = positionMs
-            events.trySend(ServerPlaybackEvent(type, positionMs, isPaused))
+            events.trySend(ServerPlaybackEvent(type, positionMs, isPaused, durationMs))
         }
     }
 
